@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>台灣即時氣象查詢 | 天氣與降雨機率</title>
+    <!-- Tailwind CSS CDN + Font Awesome 6 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'weather-blue': '#0ea5e9',
+                        'weather-sky': '#38bdf8',
+                        'rain-purple': '#6366f1',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .weather-card {
+            background: rgba(255, 255, 255, 0.92);
+            backdrop-filter: blur(2px);
+            transition: all 0.3s ease;
+        }
+        .hover-lift:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 25px 30px -12px rgba(0, 0, 0, 0.2);
+        }
+        .input-focus:focus {
+            box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.3);
+            border-color: #0ea5e9;
+        }
+        .bg-clouds {
+            background-image: radial-gradient(circle at 10% 20%, rgba(255,255,245,0.2) 2%, transparent 2.5%),
+                              radial-gradient(circle at 80% 70%, rgba(255,255,245,0.25) 1.8%, transparent 2.2%);
+            background-size: 55px 55px, 70px 70px;
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-sky-400 to-blue-500 min-h-screen font-sans antialiased bg-clouds">
+
+    <div class="container mx-auto px-4 py-8 md:py-12 max-w-3xl">
+        <!-- 頁首標題區 -->
+        <div class="text-center mb-8 md:mb-10">
+            <div class="inline-flex items-center gap-3 bg-white/30 backdrop-blur-sm rounded-full px-5 py-2 shadow-lg mb-4">
+                <i class="fas fa-cloud-sun text-white text-2xl drop-shadow"></i>
+                <span class="text-white font-bold tracking-wide">即時氣象站</span>
+            </div>
+            <h1 class="text-4xl md:text-5xl font-extrabold text-white drop-shadow-lg tracking-tight">台灣<span class="text-yellow-200"> · 天氣查詢</span></h1>
+            <p class="text-white/90 mt-2 text-lg font-medium">輸入縣市名稱，掌握當前氣溫、天氣狀態與降雨機率</p>
+        </div>
+
+        <!-- 查詢卡片區 -->
+        <div class="bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl p-6 md:p-8 weather-card transition-all">
+            <!-- 輸入區塊 + 作者署名 -->
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-gray-200 pb-4 mb-6 gap-3">
+                <div class="flex items-center gap-2 text-gray-600">
+                    <i class="fas fa-map-marker-alt text-weather-blue"></i>
+                    <span class="font-medium">查詢縣市：</span>
+                </div>
+                <div class="flex items-center gap-1.5 bg-gray-100 px-3 py-1 rounded-full shadow-inner">
+                    <i class="fas fa-pen-nib text-weather-blue text-xs"></i>
+                    <span class="text-xs font-medium text-gray-700">作者：彭韋諾</span>
+                </div>
+            </div>
+            
+            <!-- 輸入框與查詢按鈕 -->
+            <div class="flex flex-col md:flex-row gap-4 mb-8">
+                <div class="flex-1 relative">
+                    <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                    <input type="text" id="cityInput" placeholder="例如：台北市、台中市、高雄市、新北市、桃園市..." 
+                           class="w-full pl-11 pr-4 py-3 text-gray-700 border border-gray-300 rounded-xl focus:outline-none input-focus transition bg-white/90">
+                </div>
+                <button id="searchBtn" 
+                        class="bg-gradient-to-r from-weather-blue to-blue-600 hover:from-blue-600 hover:to-weather-blue text-white font-bold py-3 px-8 rounded-xl shadow-lg transition-all duration-200 flex items-center justify-center gap-2">
+                    <i class="fas fa-cloud-rain"></i> 查詢天氣
+                </button>
+            </div>
+            
+            <!-- 載入狀態 -->
+            <div id="loadingState" class="hidden flex flex-col items-center justify-center py-8">
+                <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-weather-blue mb-2"></div>
+                <p class="text-gray-500 text-sm">正在查詢「<span id="loadingCity"></span>」的天氣資料...</p>
+            </div>
+            
+            <!-- 錯誤訊息顯示區 -->
+            <div id="errorState" class="hidden bg-red-50 border-l-4 border-red-500 p-4 rounded-xl">
+                <div class="flex items-start gap-3">
+                    <i class="fas fa-exclamation-triangle text-red-500 mt-0.5"></i>
+                    <div>
+                        <p class="font-bold text-gray-800">查詢失敗</p>
+                        <p id="errorMsg" class="text-sm text-gray-600">請確認縣市名稱是否正確，或稍後再試。</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 天氣結果展示區 -->
+            <div id="weatherResult" class="hidden transition-all duration-500">
+                <div class="bg-gradient-to-br from-white to-sky-50 rounded-2xl shadow-lg overflow-hidden border border-gray-100">
+                    <div class="bg-gradient-to-r from-gray-800 to-gray-700 px-5 py-4 flex justify-between items-center flex-wrap gap-2">
+                        <div class="flex items-center gap-2 text-white">
+                            <i class="fas fa-city text-yellow-300 text-xl"></i>
+                            <h2 class="text-xl font-bold" id="resultCity">---</h2>
+                            <span class="text-xs bg-white/20 px-2 py-0.5 rounded-full">即時天氣</span>
+                        </div>
+                        <div class="text-white/80 text-sm" id="updateTimeInfo">資料更新中</div>
+                    </div>
+                    
+                    <div class="p-6 md:p-7">
+                        <div class="flex flex-col md:flex-row justify-between items-center gap-5 mb-6">
+                            <div class="text-center md:text-left">
+                                <div class="text-6xl font-black text-gray-800" id="temperature">--<span class="text-3xl align-top">°C</span></div>
+                                <div class="text-gray-500 mt-1 flex items-center gap-1 justify-center md:justify-start">
+                                    <i class="fas fa-thermometer-half"></i>
+                                    <span>體感溫度 </span>
+                                    <span id="feelsLike">--</span><span>°C</span>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-4 bg-white/70 rounded-2xl px-6 py-3 shadow-inner">
+                                <i id="weatherIcon" class="fas fa-sun text-5xl text-yellow-500"></i>
+                                <div>
+                                    <div id="weatherDesc" class="text-xl font-bold text-gray-700">晴朗</div>
+                                    <div class="text-xs text-gray-400">目前狀況</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4 pt-4 border-t border-gray-200">
+                            <div class="flex items-center gap-3 bg-white rounded-xl p-3 shadow-sm">
+                                <div class="bg-rain-purple/10 p-2 rounded-full">
+                                    <i class="fas fa-umbrella text-rain-purple text-xl"></i>
+                                </div>
+                                <div>
+                                    <p class="text-xs text-gray-400 uppercase tracking-wide">降雨機率</p>
+                                    <p class="text-2xl font-bold text-rain-purple" id="rainProbability">--<span class="text-sm">%</span></p>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-3 bg-white rounded-xl p-3 shadow-sm">
+                                <div class="bg-sky-100 p-2 rounded-full">
+                                    <i class="fas fa-tint text-weather-blue text-xl"></i>
+                                </div>
+                                <div>
+                                    <p class="text-xs text-gray-400 uppercase tracking-wide">相對濕度</p>
+                                    <p class="text-2xl font-bold text-gray-700" id="humidity">--<span class="text-sm">%</span></p>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-3 bg-white rounded-xl p-3 shadow-sm">
+                                <div class="bg-gray-100 p-2 rounded-full">
+                                    <i class="fas fa-wind text-gray-500 text-xl"></i>
+                                </div>
+                                <div>
+                                    <p class="text-xs text-gray-400 uppercase tracking-wide">風速</p>
+                                    <p class="text-2xl font-bold text-gray-700" id="windSpeed">--<span class="text-sm"> m/s</span></p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-6 text-xs bg-gray-100 rounded-xl p-3 flex items-start gap-2 text-gray-600">
+                            <i class="fas fa-lightbulb text-yellow-600 mt-0.5"></i>
+                            <span id="weatherTip">※ 輸入縣市名稱 (例如：台中市、新北市、台南市)，即可獲得即時氣象資訊。</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 快速查詢按鈕 -->
+            <div class="mt-8 pt-4 border-t border-gray-200">
+                <p class="text-xs text-gray-500 mb-3 flex items-center gap-1"><i class="fas fa-mouse-pointer"></i> 熱門縣市快速查詢：</p>
+                <div class="flex flex-wrap gap-2">
+                    <button data-city="台北市" class="quick-city-btn text-xs bg-gray-100 hover:bg-weather-blue hover:text-white transition px-3 py-1.5 rounded-full text-gray-700">台北市</button>
+                    <button data-city="新北市" class="quick-city-btn text-xs bg-gray-100 hover:bg-weather-blue hover:text-white transition px-3 py-1.5 rounded-full text-gray-700">新北市</button>
+                    <button data-city="桃園市" class="quick-city-btn text-xs bg-gray-100 hover:bg-weather-blue hover:text-white transition px-3 py-1.5 rounded-full text-gray-700">桃園市</button>
+                    <button data-city="台中市" class="quick-city-btn text-xs bg-gray-100 hover:bg-weather-blue hover:text-white transition px-3 py-1.5 rounded-full text-gray-700">台中市</button>
+                    <button data-city="台南市" class="quick-city-btn text-xs bg-gray-100 hover:bg-weather-blue hover:text-white transition px-3 py-1.5 rounded-full text-gray-700">台南市</button>
+                    <button data-city="高雄市" class="quick-city-btn text-xs bg-gray-100 hover:bg-weather-blue hover:text-white transition px-3 py-1.5 rounded-full text-gray-700">高雄市</button>
+                    <button data-city="基隆市" class="quick-city-btn text-xs bg-gray-100 hover:bg-weather-blue hover:text-white transition px-3 py-1.5 rounded-full text-gray-700">基隆市</button>
+                    <button data-city="花蓮縣" class="quick-city-btn text-xs bg-gray-100 hover:bg-weather-blue hover:text-white transition px-3 py-1.5 rounded-full text-gray-700">花蓮縣</button>
+                    <button data-city="宜蘭縣" class="quick-city-btn text-xs bg-gray-100 hover:bg-weather-blue hover:text-white transition px-3 py-1.5 rounded-full text-gray-700">宜蘭縣</button>
+                    <button data-city="彰化縣" class="quick-city-btn text-xs bg-gray-100 hover:bg-weather-blue hover:text-white transition px-3 py-1.5 rounded-full text-gray-700">彰化縣</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="text-center text-white/70 text-xs mt-8">
+            <i class="fas fa-database mr-1"></i> 氣象資料來源：Open-Meteo 全球開放天氣API (免金鑰、即時資料)
+            <span class="inline-block mx-2">•</span> 資料僅供參考，即時預報請以官方公告為主
+        </div>
+    </div>
+
+    <script>
+        // DOM 元素
+        const cityInput = document.getElementById('cityInput');
+        const searchBtn = document.getElementById('searchBtn');
+        const loadingState = document.getElementById('loadingState');
+        const errorState = document.getElementById('errorState');
+        const weatherResult = document.getElementById('weatherResult');
+        const loadingCitySpan = document.getElementById('loadingCity');
+        const errorMsgSpan = document.getElementById('errorMsg');
+        
+        const resultCitySpan = document.getElementById('resultCity');
+        const temperatureSpan = document.getElementById('temperature');
+        const feelsLikeSpan = document.getElementById('feelsLike');
+        const weatherDescSpan = document.getElementById('weatherDesc');
+        const weatherIcon = document.getElementById('weatherIcon');
+        const rainProbabilitySpan = document.getElementById('rainProbability');
+        const humiditySpan = document.getElementById('humidity');
+        const windSpeedSpan = document.getElementById('windSpeed');
+        const updateTimeInfo = document.getElementById('updateTimeInfo');
+        const weatherTipSpan = document.getElementById('weatherTip');
+        
+        const quickBtns = document.querySelectorAll('.quick-city-btn');
+        
+        // 台灣縣市經緯度對照表 (用於 Open-Meteo API)
+        const cityCoordinates = {
+            "台北市": { lat: 25.0330, lon: 121.5654, en: "Taipei" },
+            "新北市": { lat: 25.0111, lon: 121.4458, en: "NewTaipei" },
+            "桃園市": { lat: 24.9936, lon: 121.3010, en: "Taoyuan" },
+            "台中市": { lat: 24.1478, lon: 120.6736, en: "Taichung" },
+            "台南市": { lat: 22.9997, lon: 120.2269, en: "Tainan" },
+            "高雄市": { lat: 22.6273, lon: 120.3014, en: "Kaohsiung" },
+            "基隆市": { lat: 25.1276, lon: 121.7392, en: "Keelung" },
+            "新竹市": { lat: 24.8138, lon: 120.9675, en: "Hsinchu" },
+            "嘉義市": { lat: 23.4800, lon: 120.4491, en: "Chiayi" },
+            "新竹縣": { lat: 24.8380, lon: 121.0177, en: "HsinchuCounty" },
+            "苗栗縣": { lat: 24.5602, lon: 120.8214, en: "Miaoli" },
+            "彰化縣": { lat: 24.0513, lon: 120.5165, en: "Changhua" },
+            "南投縣": { lat: 23.9162, lon: 120.6853, en: "Nantou" },
+            "雲林縣": { lat: 23.7092, lon: 120.4314, en: "Yunlin" },
+            "嘉義縣": { lat: 23.4589, lon: 120.2943, en: "ChiayiCounty" },
+            "屏東縣": { lat: 22.6820, lon: 120.4895, en: "Pingtung" },
+            "宜蘭縣": { lat: 24.7521, lon: 121.7545, en: "Yilan" },
+            "花蓮縣": { lat: 23.9870, lon: 121.6048, en: "Hualien" },
+            "台東縣": { lat: 22.7583, lon: 121.1444, en: "Taitung" },
+            "澎湖縣": { lat: 23.5711, lon: 119.5795, en: "Penghu" },
+            "金門縣": { lat: 24.4360, lon: 118.3184, en: "Kinmen" },
+            "連江縣": { lat: 26.1500, lon: 119.9280, en: "Lienchiang" }
+        };
+        
+        // 天氣代碼對應中文描述和圖示 (Open-Meteo 天氣代碼)
+        function getWeatherDescription(code) {
+            const weatherMap = {
+                0: { desc: "晴朗無雲", icon: "fa-sun", color: "text-yellow-500" },
+                1: { desc: "主要晴朗", icon: "fa-sun", color: "text-yellow-500" },
+                2: { desc: "局部多雲", icon: "fa-cloud-sun", color: "text-gray-500" },
+                3: { desc: "陰天", icon: "fa-cloud", color: "text-gray-400" },
+                45: { desc: "有霧", icon: "fa-smog", color: "text-gray-400" },
+                48: { desc: "有霧", icon: "fa-smog", color: "text-gray-400" },
+                51: { desc: "毛毛雨", icon: "fa-cloud-rain", color: "text-blue-500" },
+                53: { desc: "毛毛雨", icon: "fa-cloud-rain", color: "text-blue-500" },
+                55: { desc: "毛毛雨", icon: "fa-cloud-rain", color: "text-blue-500" },
+                56: { desc: "凍雨", icon: "fa-cloud-rain", color: "text-blue-500" },
+                57: { desc: "凍雨", icon: "fa-cloud-rain", color: "text-blue-500" },
+                61: { desc: "小雨", icon: "fa-cloud-rain", color: "text-blue-500" },
+                63: { desc: "中雨", icon: "fa-cloud-showers-heavy", color: "text-blue-600" },
+                65: { desc: "大雨", icon: "fa-cloud-showers-heavy", color: "text-blue-700" },
+                66: { desc: "凍雨", icon: "fa-cloud-rain", color: "text-blue-500" },
+                67: { desc: "凍雨", icon: "fa-cloud-rain", color: "text-blue-500" },
+                71: { desc: "小雪", icon: "fa-snowflake", color: "text-blue-300" },
+                73: { desc: "中雪", icon: "fa-snowflake", color: "text-blue-300" },
+                75: { desc: "大雪", icon: "fa-snowflake", color: "text-blue-300" },
+                77: { desc: "雪粒", icon: "fa-snowflake", color: "text-blue-300" },
+                80: { desc: "陣雨", icon: "fa-cloud-rain", color: "text-blue-500" },
+                81: { desc: "陣雨", icon: "fa-cloud-showers-heavy", color: "text-blue-600" },
+                82: { desc: "強陣雨", icon: "fa-cloud-showers-heavy", color: "text-blue-700" },
+                85: { desc: "陣雪", icon: "fa-snowflake", color: "text-blue-300" },
+                86: { desc: "陣雪", icon: "fa-snowflake", color: "text-blue-300" },
+                95: { desc: "雷雨", icon: "fa-bolt", color: "text-purple-500" },
+                96: { desc: "雷雨", icon: "fa-bolt", color: "text-purple-500" },
+                99: { desc: "強雷雨", icon: "fa-bolt", color: "text-purple-600" }
+            };
+            return weatherMap[code] || { desc: "多雲", icon: "fa-cloud", color: "text-gray-500" };
+        }
+        
+        // 顯示錯誤
+        function showError(msg) {
+            errorMsgSpan.innerText = msg;
+            errorState.classList.remove('hidden');
+            weatherResult.classList.add('hidden');
+            loadingState.classList.add('hidden');
+        }
+        
+        // 主要查詢函式 - 使用 Open-Meteo API (免金鑰，支援 CORS)
+        async function fetchWeather(cityName) {
+            if (!cityName || cityName.trim() === '') {
+                showError('請輸入縣市名稱 (例如：台中市、台北市)');
+                return false;
+            }
+            
+            const formattedCity = cityName.trim();
+            
+            // 取得經緯度
+            const coords = cityCoordinates[formattedCity];
+            if (!coords) {
+                showError(`找不到「${formattedCity}」的座標資料，請輸入正確的台灣縣市名稱（例如：台北市、台中市、高雄市）`);
+                return false;
+            }
+            
+            // 顯示載入中
+            loadingState.classList.remove('hidden');
+            errorState.classList.add('hidden');
+            weatherResult.classList.add('hidden');
+            loadingCitySpan.innerText = formattedCity;
+            
+            try {
+                // 使用 Open-Meteo 免費天氣 API (無需金鑰)
+                // 獲取：目前溫度、體感溫度、濕度、降雨機率、風速、天氣代碼
+                const url = `https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation_probability,weather_code,wind_speed_10m&timezone=Asia/Taipei&forecast_days=1`;
+                
+                const response = await fetch(url);
+                if (!response.ok) {
+                    throw new Error(`API 回應錯誤: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (!data.current) {
+                    throw new Error('無法取得天氣資料');
+                }
+                
+                const current = data.current;
+                const temp = Math.round(current.temperature_2m);
+                const feelsLike = Math.round(current.apparent_temperature);
+                const humidity = current.relative_humidity_2m;
+                const rainProb = current.precipitation_probability || 0;
+                const windSpeed = current.wind_speed_10m;
+                const weatherCode = current.weather_code;
+                
+                const weatherInfo = getWeatherDescription(weatherCode);
+                
+                // 更新 UI
+                resultCitySpan.innerText = formattedCity;
+                temperatureSpan.innerHTML = `${temp}<span class="text-3xl align-top">°C</span>`;
+                feelsLikeSpan.innerText = feelsLike;
+                weatherDescSpan.innerText = weatherInfo.desc;
+                weatherIcon.className = `fas ${weatherInfo.icon} text-5xl ${weatherInfo.color}`;
+                rainProbabilitySpan.innerHTML = `${rainProb}<span class="text-sm">%</span>`;
+                humiditySpan.innerHTML = `${humidity}<span class="text-sm">%</span>`;
+                windSpeedSpan.innerHTML = `${windSpeed.toFixed(1)}<span class="text-sm"> m/s</span>`;
+                
+                const now = new Date();
+                updateTimeInfo.innerText = `觀測時間: ${now.toLocaleString('zh-TW')}`;
+                
+                // 降雨提示
+                if (rainProb >= 70) {
+                    weatherTipSpan.innerHTML = '💡 降雨機率偏高，出門請攜帶雨具，行車留意路面濕滑。';
+                } else if (rainProb >= 30) {
+                    weatherTipSpan.innerHTML = '☔ 降雨機率稍高，建議隨身帶傘備用。';
+                } else {
+                    weatherTipSpan.innerHTML = '🌞 降雨機率低，晴朗好天氣，仍可適時補充水分。';
+                }
+                
+                loadingState.classList.add('hidden');
+                weatherResult.classList.remove('hidden');
+                return true;
+                
+            } catch (err) {
+                console.error('天氣查詢錯誤:', err);
+                showError(`查詢「${formattedCity}」失敗：${err.message}。請檢查網路連線後重試。`);
+                loadingState.classList.add('hidden');
+                return false;
+            }
+        }
+        
+        // 查詢事件
+        async function onSearch() {
+            const city = cityInput.value.trim();
+            if (city === "") {
+                showError("請輸入要查詢的縣市名稱 (例如：台中市)");
+                return;
+            }
+            await fetchWeather(city);
+        }
+        
+        searchBtn.addEventListener('click', onSearch);
+        cityInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') onSearch();
+        });
+        
+        // 快速查詢按鈕
+        quickBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const city = btn.getAttribute('data-city');
+                cityInput.value = city;
+                fetchWeather(city);
+            });
+        });
+        
+        // 頁面載入時自動顯示台中市天氣
+        window.addEventListener('load', () => {
+            cityInput.value = "台中市";
+            fetchWeather("台中市");
+        });
+    </script>
+</body>
+</html>
